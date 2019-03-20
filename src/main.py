@@ -14,21 +14,59 @@ from misc import progress_bar
 CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 
+class Parameter:
+    def __init__(self):
+        self.lr = None
+        self.epoch = 2 
+        self.trainBatchSize = None
+        self.testBatchSize = 100
+        self.cuda = True
+
+def objective(trial):
+    # parser = argparse.ArgumentParser(description="cifar-10 with PyTorch")
+    # parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    # parser.add_argument('--epoch', default=200, type=int, help='number of epochs tp train for')
+    # parser.add_argument('--trainBatchSize', default=100, type=int, help='training batch size')
+    # parser.add_argument('--testBatchSize', default=100, type=int, help='testing batch size')
+    # parser.add_argument('--cuda', default=torch.cuda.is_available(), type=bool, help='whether cuda is in use')
+    # args = parser.parse_args()
+
+    parameter = Parameter()
+    parameter.lr = trial.suggest_loguniform("lr", 1e-4, 1e-1)
+    parameter.trainBatchSize = trial.suggest_int("batch_size", 2 ,256)
+    solver = Solver(parameter, trial)
+    
+    accuracy = solver.run()
+    return accuracy
+
 def main():
-    parser = argparse.ArgumentParser(description="cifar-10 with PyTorch")
-    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
-    parser.add_argument('--epoch', default=200, type=int, help='number of epochs tp train for')
-    parser.add_argument('--trainBatchSize', default=100, type=int, help='training batch size')
-    parser.add_argument('--testBatchSize', default=100, type=int, help='testing batch size')
-    parser.add_argument('--cuda', default=torch.cuda.is_available(), type=bool, help='whether cuda is in use')
-    args = parser.parse_args()
+    import optuna
+    from optuna.pruners import SuccessiveHalvingPruner
+    study = optuna.create_study(pruner=SuccessiveHalvingPruner())
+    study.optimize(objective, n_trials=2)
 
-    solver = Solver(args)
-    solver.run()
+    pruned_trials = [t for t in study.trials if t.state == optuna.structs.TrialState.PRUNED]
+    complete_trials = [t for t in study.trials if t.state == optuna.structs.TrialState.COMPLETE]
+    print('Study statistics: ')
+    print('  Number of finished trials: ', len(study.trials))
+    print('  Number of pruned trials: ', len(pruned_trials))
+    print('  Number of complete trials: ', len(complete_trials))
 
+    print('Best trial:')
+    trial = study.best_trial
+
+    print('  Value: ', trial.value)
+
+    print('  Params: ')
+    for key, value in trial.params.items():
+        print('    {}: {}'.format(key, value))
+
+    print('  User attrs:')
+    for key, value in trial.user_attrs.items():
+        print('    {}: {}'.format(key, value))
 
 class Solver(object):
-    def __init__(self, config):
+    def __init__(self, config, trial):
         self.model = None
         self.lr = config.lr
         self.epochs = config.epoch
@@ -41,6 +79,8 @@ class Solver(object):
         self.cuda = config.cuda
         self.train_loader = None
         self.test_loader = None
+
+        self.trial = trial
 
     def load_data(self):
         train_transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor()])
@@ -100,7 +140,8 @@ class Solver(object):
 
             # train_correct incremented by one if predicted right
             train_correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
-
+            if self.trial.should_prune(batch_num):
+                raise optuna.structs.TrialPruned()
             # progress_bar(batch_num, len(self.train_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
                         #  % (train_loss / (batch_num + 1), 100. * train_correct / total, train_correct, total))
 
@@ -148,7 +189,8 @@ class Solver(object):
             print(f"{time.time() - start}, {epoch}, {train_result[0]}, {train_result[1]}, {test_result[0]}, {test_result[1]}")
             if epoch == self.epochs:
                 print("===> BEST ACC. PERFORMANCE: %.3f%%" % (accuracy * 100))
-                self.save()
+                # self.save()
+        return accuracy
 
 
 if __name__ == '__main__':

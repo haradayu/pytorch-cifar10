@@ -10,6 +10,8 @@ import argparse
 from models import *
 from misc import progress_bar
 
+import time
+
 
 CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
@@ -17,10 +19,11 @@ CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 class Parameter:
     def __init__(self):
         self.lr = None
-        self.epoch = 10 
+        self.epoch = 1000 
         self.trainBatchSize = None
         self.testBatchSize = 100
         self.cuda = True
+        self.learningTime = 120
 
 def objective(trial):
     # parser = argparse.ArgumentParser(description="cifar-10 with PyTorch")
@@ -32,12 +35,12 @@ def objective(trial):
     # args = parser.parse_args()
 
     parameter = Parameter()
-    parameter.lr = trial.suggest_loguniform("lr", 1e-4, 1e-1)
-    parameter.trainBatchSize = trial.suggest_int("batch_size", 2 ,256)
+    parameter.lr = trial.suggest_categorical("lr", [0.0005, 0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064,0.128, 0.256, 0.512])
+    parameter.trainBatchSize = trial.suggest_categorical("batch_size", [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024])
     solver = Solver(parameter, trial)
     
-    accuracy = solver.run()
-    return accuracy
+    accuracy, total_time = solver.run()
+    return (1 - accuracy)
 
 def main():
     import optuna
@@ -79,6 +82,7 @@ class Solver(object):
         self.cuda = config.cuda
         self.train_loader = None
         self.test_loader = None
+        self.leaning_time = config.learningTime
 
         self.trial = trial
         print("lr:", self.lr, "batchsize:",self.train_batch_size)
@@ -122,7 +126,7 @@ class Solver(object):
         self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[75, 150], gamma=0.5)
         self.criterion = nn.CrossEntropyLoss().to(self.device)
 
-    def train(self):
+    def train(self, start_time):
         self.model.train()
         train_loss = 0
         train_correct = 0
@@ -141,8 +145,9 @@ class Solver(object):
 
             # train_correct incremented by one if predicted right
             train_correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
-            if self.trial.should_prune(batch_num):
-                raise optuna.structs.TrialPruned()
+            if time.time() - start_time > self.leaning_time:
+                break
+
             # progress_bar(batch_num, len(self.train_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
                         #  % (train_loss / (batch_num + 1), 100. * train_correct / total, train_correct, total))
 
@@ -177,21 +182,25 @@ class Solver(object):
         print("Checkpoint saved to {}".format(model_out_path))
 
     def run(self):
-        import time
         self.load_data()
         self.load_model()
         accuracy = 0
         start = time.time()
         for epoch in range(1, self.epochs + 1):
             self.scheduler.step(epoch)
-            train_result = self.train()
+            train_result = self.train(start)
             test_result = self.test()
             accuracy = max(accuracy, test_result[1])
             print(f"{time.time() - start}, {epoch}, {train_result[0]}, {train_result[1]}, {test_result[0]}, {test_result[1]}")
-            if epoch == self.epochs:
+            # if epoch == self.epochs:
+
+            if time.time() - start > self.leaning_time:
                 print("===> BEST ACC. PERFORMANCE: %.3f%%" % (accuracy * 100))
+                break
                 # self.save()
-        return accuracy
+            if self.trial.should_prune(epoch):
+                raise optuna.structs.TrialPruned()
+        return accuracy, time.time() - start
 
 
 if __name__ == '__main__':

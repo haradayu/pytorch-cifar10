@@ -17,7 +17,7 @@ CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 class Parameter:
     def __init__(self):
         self.lr = None
-        self.epoch = 2 
+        self.epoch = 10 
         self.trainBatchSize = None
         self.testBatchSize = 100
         self.cuda = True
@@ -43,7 +43,7 @@ def main():
     import optuna
     from optuna.pruners import SuccessiveHalvingPruner
     study = optuna.create_study(pruner=SuccessiveHalvingPruner())
-    study.optimize(objective, n_trials=2)
+    study.optimize(objective, n_trials=100)
 
     pruned_trials = [t for t in study.trials if t.state == optuna.structs.TrialState.PRUNED]
     complete_trials = [t for t in study.trials if t.state == optuna.structs.TrialState.COMPLETE]
@@ -81,6 +81,7 @@ class Solver(object):
         self.test_loader = None
 
         self.trial = trial
+        print("lr:", self.lr, "batchsize:",self.train_batch_size)
 
     def load_data(self):
         train_transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor()])

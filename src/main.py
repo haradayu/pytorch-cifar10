@@ -45,9 +45,9 @@ class Solver(object):
     def load_data(self):
         train_transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor()])
         test_transform = transforms.Compose([transforms.ToTensor()])
-        train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=train_transform)
+        train_set = torchvision.datasets.CIFAR10(root='../data', train=True, download=False, transform=train_transform)
         self.train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=self.train_batch_size, shuffle=True)
-        test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=test_transform)
+        test_set = torchvision.datasets.CIFAR10(root='../data', train=False, download=False, transform=test_transform)
         self.test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=self.test_batch_size, shuffle=False)
 
     def load_model(self):
@@ -74,13 +74,14 @@ class Solver(object):
         # self.model = DenseNet169().to(self.device)
         # self.model = DenseNet201().to(self.device)
         self.model = WideResNet(depth=28, num_classes=10).to(self.device)
+        if self.cuda:
+            self.model = torch.nn.DataParallel(self.model) 
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[75, 150], gamma=0.5)
         self.criterion = nn.CrossEntropyLoss().to(self.device)
 
     def train(self):
-        print("train:")
         self.model.train()
         train_loss = 0
         train_correct = 0
@@ -100,13 +101,12 @@ class Solver(object):
             # train_correct incremented by one if predicted right
             train_correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
 
-            progress_bar(batch_num, len(self.train_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
-                         % (train_loss / (batch_num + 1), 100. * train_correct / total, train_correct, total))
+            # progress_bar(batch_num, len(self.train_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
+                        #  % (train_loss / (batch_num + 1), 100. * train_correct / total, train_correct, total))
 
         return train_loss, train_correct / total
 
     def test(self):
-        print("test:")
         self.model.eval()
         test_loss = 0
         test_correct = 0
@@ -122,27 +122,30 @@ class Solver(object):
                 total += target.size(0)
                 test_correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
 
-                progress_bar(batch_num, len(self.test_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
-                             % (test_loss / (batch_num + 1), 100. * test_correct / total, test_correct, total))
+                # progress_bar(batch_num, len(self.test_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
+                            #  % (test_loss / (batch_num + 1), 100. * test_correct / total, test_correct, total))
 
         return test_loss, test_correct / total
 
     def save(self):
-        model_out_path = "model.pth"
+        from pathlib import Path
+        Path("../model/").mkdir(exist_ok=True)
+        model_out_path = "../model/model.pth"
         torch.save(self.model, model_out_path)
         print("Checkpoint saved to {}".format(model_out_path))
 
     def run(self):
+        import time
         self.load_data()
         self.load_model()
         accuracy = 0
+        start = time.time()
         for epoch in range(1, self.epochs + 1):
             self.scheduler.step(epoch)
-            print("\n===> epoch: %d/200" % epoch)
             train_result = self.train()
-            print(train_result)
             test_result = self.test()
             accuracy = max(accuracy, test_result[1])
+            print(f"{time.time() - start}, {epoch}, {train_result[0]}, {train_result[1]}, {test_result[0]}, {test_result[1]}")
             if epoch == self.epochs:
                 print("===> BEST ACC. PERFORMANCE: %.3f%%" % (accuracy * 100))
                 self.save()

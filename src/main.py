@@ -90,9 +90,9 @@ class Solver(object):
     def load_data(self):
         train_transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor()])
         test_transform = transforms.Compose([transforms.ToTensor()])
-        train_set = torchvision.datasets.CIFAR10(root='../data', train=True, download=False, transform=train_transform)
+        train_set = torchvision.datasets.CIFAR10(root='../data', train=True, download=True, transform=train_transform)
         self.train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=self.train_batch_size, shuffle=True)
-        test_set = torchvision.datasets.CIFAR10(root='../data', train=False, download=False, transform=test_transform)
+        test_set = torchvision.datasets.CIFAR10(root='../data', train=False, download=True, transform=test_transform)
         self.test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=self.test_batch_size, shuffle=False)
 
     def load_model(self):

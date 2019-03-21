@@ -1,7 +1,10 @@
 import argparse
 import numpy as np; np.random.seed(0)
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
 
 parser = argparse.ArgumentParser(description='ログファイルからヒートマップを作成します')
 parser.add_argument('input', type=str,
@@ -28,5 +31,17 @@ with open(args.input,"r") as f:
             if dataset[lr_index, batchsize_index] < acc:   
                 dataset[lr_index, batchsize_index] = acc
 print(dataset)
-sns.heatmap(dataset, annot=True, fmt="f")
-plt.show()
+
+df = pd.DataFrame({ "Learning Rate":[],
+                    "Batch Size":[],
+                    "Accuracy":[]
+                    })
+for i,lr in enumerate(lr_value_list):
+    for j,batch_size in enumerate(batchsize_value_list):
+        acc = dataset[i][j]
+        ser = pd.Series([lr,batch_size,acc], index=df.columns, name=f"{i}_{j}")
+        df = df.append(ser)
+df = df.pivot("Learning Rate", "Batch Size", "Accuracy")
+sns.heatmap(df)
+# plt.show()
+plt.savefig("plot.png")

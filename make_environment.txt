@@ -1,0 +1,5 @@
+#!/usr/bin/bash
+mkdir venv
+python3 -m venv venv
+source init.source
+pip install -r requirement.txt
